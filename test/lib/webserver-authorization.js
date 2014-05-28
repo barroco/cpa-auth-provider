@@ -204,7 +204,7 @@ describe('GET /authorize [Web Server flow]', function() {
         });
 
         it("should return an invalid_request error", function() {
-          assertions.verifyRedirectError(this.res, 'invalid_request');
+          assertions.verifyError(this.res, 400, 'invalid_request');
         });
       });
 
@@ -221,8 +221,8 @@ describe('GET /authorize [Web Server flow]', function() {
           }, done);
         });
 
-        it("should return an unsupported response type error", function() {
-          assertions.verifyRedirectError(this.res, 'unsupported_response_type');
+        it("should return an invalid_request error", function() {
+          assertions.verifyError(this.res, 400, 'invalid_request');
         });
       });
 
