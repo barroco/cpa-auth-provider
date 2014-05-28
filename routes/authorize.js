@@ -42,6 +42,10 @@ var schemaPost = {
   required: true,
   additionalProperties: false,
   properties: {
+    response_type: {
+      type: "string",
+      required: true
+    },
     client_id: {
       type: "string",
       required: true
@@ -57,6 +61,10 @@ var schemaPost = {
     state: {
       type:     "string",
       required: false
+    },
+    domain: {
+      type:     "string",
+      required: true
     },
     authorization: {
       type:     "string",
@@ -101,7 +109,8 @@ module.exports = function(app, options) {
           res.sendInvalidClient('Unknown client');
           return;
         }
-        if (client.registration_type === 'dynamic') {
+        if ((responseType == 'code' && client.registration_type === 'dynamic') ||
+          (responseType == 'token' && !client.redirect_uri)) {
           res.sendErrorResponse(400, 'unauthorized_client',
             'The client is not authorized to request ' +
             'an authorization code using this method');
@@ -114,13 +123,14 @@ module.exports = function(app, options) {
 
         var validationError = validateUri(req.query, schemaGet);
         if (!validationError) {
-          if (responseType !== 'code') {
+          if (responseType !== 'code' && responseType !== 'token') {
             res.redirectError(client.redirect_uri, 'unsupported_response_type',
-              "Wrong response type: 'code' required.");
+              "Wrong response type: 'code' or 'token' required.");
             return;
           }
 
           res.render('authorize.ejs', {
+            response_type: responseType,
             client_name: client.name,
             client_id: clientId,
             redirect_uri: redirectUri,

@@ -6,8 +6,9 @@ var generate = require('../../lib/generate');
 var assertions    = require('../assertions');
 var requestHelper = require('../request-helper');
 
-var async = require('async');
+var async   = require('async');
 var cheerio = require('cheerio');
+var url     = require('url');
 
 var clearDatabase = function(done) {
   db.sequelize.query('DELETE FROM Domains').then(function() {
@@ -17,6 +18,9 @@ var clearDatabase = function(done) {
     return db.sequelize.query('DELETE FROM AccessTokens');
   })
   .then(function() {
+    return db.sequelize.query('DELETE FROM Users');
+  })
+  .then(function() {
     done();
   },
   function(error) {
@@ -24,29 +28,28 @@ var clearDatabase = function(done) {
   });
 };
 
-var createStaticClient = function(callback) {
+var createCorrectClient = function(callback) {
   db.Client
     .create({
-      id:                 100,
-      secret:             'e2412cd1-f010-4514-acab-c8af59e5501a',
-      name:               'Test Static client',
-      software_id:        'CPA AP Test',
-      software_version:   '0.0.1',
-      ip:                 '127.0.0.1',
-      registration_type:  'static',
-      redirect_uri:       'https://example-client.bbc.co.uk/callback'
+      id:               100,
+      secret:           'e2412cd1-f010-4514-acab-c8af59e5501a',
+      name:             'Test client',
+      software_id:      'CPA AP Test',
+      software_version: '0.0.1',
+      ip:               '127.0.0.1',
+      redirect_uri:     'http://example.com/implicit-client.html'
     }).complete(callback);
 };
 
-var createDynamicClient = function(callback) {
+var createClientWithoutRedirectUri = function(callback) {
   db.Client
     .create({
-      id:                 101,
-      secret:             'cfadc123-f0af0-4514-acab-c8af59e5501a',
-      name:               'Test Dynamic client',
-      software_id:        'CPA AP Test',
-      software_version:   '0.0.1',
-      ip:                 '127.0.0.1'
+      id:               101,
+      secret:           'e2412cd1-f010-4514-acab-c8af59e5501a',
+      name:             'Test client',
+      software_id:      'CPA AP Test',
+      software_version: '0.0.1',
+      ip:               '127.0.0.1'
     }).complete(callback);
 };
 
@@ -59,10 +62,18 @@ var createDomain = function(callback) {
   }).complete(callback);
 };
 
+var createUser = function(callback) {
+  db.User.create({
+    provider_uid: 'testuser',
+    password: 'testpassword'
+  }).complete(callback);
+};
+
 var initDatabase = function(done) {
   async.series([
-    createStaticClient,
-    createDynamicClient,
+    createCorrectClient,
+    createClientWithoutRedirectUri,
+    createUser,
     createDomain
   ], function(err) {
       if(err){
@@ -73,7 +84,7 @@ var initDatabase = function(done) {
     });
 };
 
-describe('GET /authorize [Web Server flow]', function() {
+describe('GET /authorize [Implicit Flow]', function() {
   context("when the client redirects the resource owner for authorization", function() {
     before(clearDatabase);
     before(initDatabase);
@@ -95,9 +106,9 @@ describe('GET /authorize [Web Server flow]', function() {
       context('with valid parameters', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
+            'response_type=token' +
             '&client_id=100' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -116,8 +127,9 @@ describe('GET /authorize [Web Server flow]', function() {
         describe('the response body', function() {
           it('should contain hidden inputs with request informations', function() {
             var $ = cheerio.load(this.res.text);
+
             expect($('input[name="response_type"]').length).to.equal(1);
-            expect($('input[name="response_type"]')[0].attribs.value).to.equal('code');
+            expect($('input[name="response_type"]')[0].attribs.value).to.equal('token');
             expect($('input[name="client_id"]').length).to.equal(1);
             expect($('input[name="client_id"]')[0].attribs.value).to.equal('100');
             expect($('input[name="redirect_uri"]').length).to.equal(1);
@@ -138,12 +150,12 @@ describe('GET /authorize [Web Server flow]', function() {
 
       });
 
-      context('with client_id of a client registered dynamically', function() {
+      context('with client_id of a client registered without redirect_uri', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
+            'response_type=token' +
             '&client_id=101' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -159,8 +171,8 @@ describe('GET /authorize [Web Server flow]', function() {
       context('with missing client_id', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            'response_type=token' +
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -176,9 +188,9 @@ describe('GET /authorize [Web Server flow]', function() {
       context('with invalid client_id', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
+            'response_type=token' +
             '&client_id=in' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -195,7 +207,7 @@ describe('GET /authorize [Web Server flow]', function() {
         before(function(done) {
           var path = '/authorize?' +
             'client_id=100' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -213,7 +225,7 @@ describe('GET /authorize [Web Server flow]', function() {
           var path = '/authorize?' +
             'response_type=device' +
             '&client_id=100' +
-            '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+            '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -229,7 +241,7 @@ describe('GET /authorize [Web Server flow]', function() {
       context('with missing redirect_uri', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
+            'response_type=token' +
             '&client_id=100';
 
           requestHelper.sendRequest(this, path, {
@@ -246,9 +258,9 @@ describe('GET /authorize [Web Server flow]', function() {
       context('with a different redirect_uri than the client\'s one', function() {
         before(function(done) {
           var path = '/authorize?' +
-            'response_type=code' +
+            'response_type=token' +
             '&client_id=100' +
-            '&redirect_uri=' + encodeURI('https://example-client.ebu.io/callback');
+            '&redirect_uri=' + encodeURI('http://wrong-example.com/implicit-client.html');
 
           requestHelper.sendRequest(this, path, {
             method: 'get',
@@ -266,9 +278,9 @@ describe('GET /authorize [Web Server flow]', function() {
     context('when user is not authenticated', function() {
       before(function(done) {
         var path = '/authorize?' +
-          'response_type=code' +
+          'response_type=token' +
           '&client_id=100' +
-          '&redirect_uri=' + encodeURI('https://example-client.bbc.co.uk/callback');
+          '&redirect_uri=' + encodeURI('http://example.com/implicit-client.html');
 
         requestHelper.sendRequest(this, path, {
           method: 'get'

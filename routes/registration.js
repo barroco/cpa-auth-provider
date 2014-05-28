@@ -23,6 +23,10 @@ var schema = {
     software_version: {
       type:     "string",
       required: true
+    },
+    redirect_uri: {
+      type:     "string",
+      required: false
     }
   }
 };
@@ -60,7 +64,8 @@ module.exports = function(app) {
             name:             req.body.client_name,
             software_id:      req.body.software_id,
             software_version: req.body.software_version,
-            ip:               clientIp
+            ip:               clientIp,
+            redirect_uri:     req.body.redirect_uri
           })
           .complete(function(err, client) {
             callback(err, client);
