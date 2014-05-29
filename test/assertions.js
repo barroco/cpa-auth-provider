@@ -1,6 +1,8 @@
 "use strict";
 
-var url = require('url');
+var url         = require('url');
+var querystring = require('querystring');
+
 
 module.exports = {
   verifyError: function(res, statusCode, error) {
@@ -24,5 +26,20 @@ module.exports = {
     expect(query.error).to.equal(error);
     expect(query).to.have.property('error_description');
     expect(query.error_description).to.not.equal('');
+  },
+  verifyImplicitError: function(res, error) {
+    expect(res.statusCode).to.equal(302);
+    expect(res.headers['content-type']).to.equal('text/plain; charset=UTF-8');
+    expect(res.headers.location).to.be.a('string');
+
+    var hash = url.parse(res.headers.location).hash;
+    expect(hash).to.be.a('string');
+
+    hash = querystring.parse(hash.substr(1));
+    expect(hash).to.be.an('object');
+    expect(hash).to.have.property('error');
+    expect(hash.error).to.equal(error);
+    expect(hash).to.have.property('error_description');
+    expect(hash.error_description).to.not.equal('');
   }
 };
